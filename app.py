@@ -207,7 +207,7 @@ def main():
     corr_df = corr_df[corr_df['variable'].isin(selected_vars)]
 
     # Tabs
-    tabs = st.tabs(["Data Overview", "Correlation Analysis", "District Comparison", "Time Series Analysis", "Statistical Summary", "Export Results"])
+    tabs = st.tabs(["Data Overview", "Correlation Analysis", "District Comparison", "Time Series Analysis", "Statistical Summary", "Executive Summary", "Export Results"])
 
     # Data Overview
     with tabs[0]:
@@ -267,8 +267,37 @@ def main():
         st.write("- Weak: |r| < 0.3\n- Moderate: 0.3 ≤ |r| < 0.7\n- Strong: |r| ≥ 0.7")
         st.write("**Significance:** p < 0.05")
 
-    # Export Results
+    # Executive Summary
     with tabs[5]:
+        st.markdown(generate_executive_summary(df_filtered, corr_df))
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Most Impactful Environmental Factors")
+            impact_chart = create_impact_ranking_chart(corr_df)
+            if impact_chart:
+                st.plotly_chart(impact_chart, use_container_width=True)
+        
+        with col2:
+            st.subheader("District Performance Ranking")
+            perf_chart = create_district_performance_chart(df_filtered)
+            if perf_chart:
+                st.plotly_chart(perf_chart, use_container_width=True)
+        
+        st.subheader("Quick Action Items")
+        st.markdown("""
+        **Based on the analysis, consider these strategic actions:**
+        
+        1. **Focus on the most impactful environmental factor** identified above
+        2. **Develop targeted strategies** for underperforming districts
+        3. **Monitor seasonal patterns** and adjust inventory accordingly
+        4. **Investigate strong correlations** for business optimization opportunities
+        5. **Set up regular monitoring** of key environmental indicators
+        """)
+
+    # Export Results
+    with tabs[6]:
         st.subheader("Download Correlation Results")
         st.markdown(export_results(corr_df), unsafe_allow_html=True)
         st.subheader("Export Plots")
@@ -343,6 +372,126 @@ def generate_chart_conclusion(corr_df, chart_type="heatmap", district=None, fisc
     
     else:
         return "**Chart Interpretation:**\n\n• Analyze patterns and relationships in the data\n• Look for trends, outliers, and significant correlations\n• Consider business implications of findings"
+
+# -----------------------------
+# 13. Executive Summary Functions
+# -----------------------------
+def generate_executive_summary(df, corr_df):
+    """Generate comprehensive executive summary with key insights."""
+    if df.empty or corr_df.empty:
+        return "No data available for executive summary."
+    
+    # Data overview
+    total_districts = df['district'].nunique()
+    total_years = df['fiscal_year'].nunique()
+    total_months = df['month'].nunique()
+    avg_sales = df['sales_volume'].mean()
+    total_obs = len(df)
+    
+    # Top correlations across all data
+    all_corr = corr_df.copy()
+    significant_corr = all_corr[all_corr['p_value'] < 0.05].copy()
+    
+    # Most impactful variables (highest absolute correlation)
+    most_impactful = all_corr.loc[all_corr['correlation'].abs().idxmax()]
+    
+    # Top 5 positive and negative correlations
+    top_positive = all_corr[all_corr['correlation'] > 0].nlargest(5, 'correlation')
+    top_negative = all_corr[all_corr['correlation'] < 0].nsmallest(5, 'correlation')
+    
+    # District performance analysis
+    district_sales = df.groupby('district')['sales_volume'].agg(['mean', 'std', 'count']).round(2)
+    best_district = district_sales.loc[district_sales['mean'].idxmax()]
+    worst_district = district_sales.loc[district_sales['mean'].idxmin()]
+    
+    # Year-over-year trends
+    yearly_sales = df.groupby('fiscal_year')['sales_volume'].mean()
+    sales_growth = ((yearly_sales.iloc[-1] - yearly_sales.iloc[0]) / yearly_sales.iloc[0] * 100).round(2)
+    
+    summary = f"""
+## 📊 Executive Summary Dashboard
+
+### 🎯 **Data Overview**
+- **Total Observations:** {total_obs:,}
+- **Districts Analyzed:** {total_districts}
+- **Fiscal Years:** {total_years}
+- **Time Period:** {total_months} months
+- **Average Sales Volume:** {avg_sales:,.2f}
+
+### 🔥 **Most Impactful Environmental Factor**
+**{most_impactful['variable']}** shows the strongest relationship with sales:
+- **Correlation:** {most_impactful['correlation']:.3f} ({most_impactful['strength']})
+- **Statistical Significance:** p = {most_impactful['p_value']:.3f}
+- **District:** {most_impactful['district']}
+- **Year:** {most_impactful['fiscal_year']}
+
+### 📈 **Top 5 Positive Correlations**
+"""
+    
+    for idx, row in top_positive.iterrows():
+        summary += f"- **{row['variable']}** (r={row['correlation']:.3f}, {row['strength']}) - {row['district']}, {row['fiscal_year']}\n"
+    
+    summary += f"\n### 📉 **Top 5 Negative Correlations**\n"
+    
+    for idx, row in top_negative.iterrows():
+        summary += f"- **{row['variable']}** (r={row['correlation']:.3f}, {row['strength']}) - {row['district']}, {row['fiscal_year']}\n"
+    
+    summary += f"""
+### 🏆 **District Performance Analysis**
+- **Best Performing District:** {district_sales['mean'].idxmax()} (Avg: {best_district['mean']:,.2f})
+- **Lowest Performing District:** {district_sales['mean'].idxmin()} (Avg: {worst_district['mean']:,.2f})
+- **Sales Growth Trend:** {sales_growth}% over the analyzed period
+
+### 📊 **Statistical Significance**
+- **Significant Correlations:** {len(significant_corr)} out of {len(all_corr)} ({len(significant_corr)/len(all_corr)*100:.1f}%)
+- **Strong Correlations (|r| ≥ 0.7):** {len(all_corr[all_corr['correlation'].abs() >= 0.7])}
+- **Moderate Correlations (0.3 ≤ |r| < 0.7):** {len(all_corr[(all_corr['correlation'].abs() >= 0.3) & (all_corr['correlation'].abs() < 0.7)])}
+
+### 💡 **Key Business Insights**
+"""
+    
+    # Generate business insights
+    if most_impactful['correlation'] > 0.5:
+        summary += f"• **{most_impactful['variable']}** has a strong positive impact on sales - consider leveraging this relationship\n"
+    elif most_impactful['correlation'] < -0.5:
+        summary += f"• **{most_impactful['variable']}** has a strong negative impact on sales - consider mitigation strategies\n"
+    
+    if sales_growth > 0:
+        summary += f"• Overall sales show a positive growth trend of {sales_growth}%\n"
+    else:
+        summary += f"• Sales show a declining trend of {abs(sales_growth)}% - investigate underlying factors\n"
+    
+    summary += f"• {len(significant_corr)} environmental factors significantly influence sales performance\n"
+    summary += f"• District performance varies significantly - consider targeted strategies\n"
+    
+    return summary
+
+def create_impact_ranking_chart(corr_df):
+    """Create a chart showing the most impactful variables."""
+    if corr_df.empty:
+        return None
+    
+    # Get average absolute correlation by variable
+    impact_ranking = corr_df.groupby('variable')['correlation'].apply(lambda x: x.abs().mean()).sort_values(ascending=False)
+    
+    fig = px.bar(x=impact_ranking.values, y=impact_ranking.index, orientation='h',
+                 title="Environmental Factors by Impact on Sales (Average Absolute Correlation)",
+                 labels={'x': 'Average |Correlation|', 'y': 'Environmental Factor'})
+    fig.update_layout(showlegend=False)
+    return fig
+
+def create_district_performance_chart(df):
+    """Create a chart showing district performance."""
+    if df.empty:
+        return None
+    
+    district_perf = df.groupby('district')['sales_volume'].mean().sort_values(ascending=False)
+    
+    fig = px.bar(x=district_perf.index, y=district_perf.values,
+                 title="Average Sales Volume by District",
+                 labels={'x': 'District', 'y': 'Average Sales Volume'})
+    fig.update_layout(showlegend=False)
+    return fig
 
 if __name__ == "__main__":
     main() 
