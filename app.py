@@ -221,10 +221,14 @@ def main():
     with tabs[1]:
         st.subheader("Correlation Heatmap (Overall)")
         st.plotly_chart(create_correlation_heatmap(corr_df), use_container_width=True)
+        st.markdown(generate_chart_conclusion(corr_df, "heatmap"))
+        
         st.subheader("District-wise Correlation Heatmaps")
         for district in selected_district:
             st.markdown(f"**{district}**")
             st.plotly_chart(create_correlation_heatmap(corr_df, district=district), use_container_width=True)
+            st.markdown(generate_chart_conclusion(corr_df, "heatmap", district=district))
+        
         st.subheader("Correlation Data Table")
         st.dataframe(corr_df)
 
@@ -232,9 +236,14 @@ def main():
     with tabs[2]:
         st.subheader("Grouped Bar Chart: Average Correlations by District")
         st.plotly_chart(create_grouped_bar_chart(corr_df), use_container_width=True)
+        st.markdown(generate_chart_conclusion(corr_df, "bar"))
+        
         st.subheader("Box Plots: Sales Distribution")
         st.plotly_chart(create_box_plots(df_filtered, by='district'), use_container_width=True)
+        st.markdown(generate_chart_conclusion(corr_df, "box"))
+        
         st.plotly_chart(create_box_plots(df_filtered, by='fiscal_year'), use_container_width=True)
+        st.markdown(generate_chart_conclusion(corr_df, "box"))
 
     # Time Series Analysis
     with tabs[3]:
@@ -242,9 +251,12 @@ def main():
         for district in selected_district:
             st.markdown(f"**{district}**")
             st.plotly_chart(create_time_series(df_filtered, district=district), use_container_width=True)
+            st.markdown(generate_chart_conclusion(corr_df, "time_series", district=district))
+        
         st.subheader("Faceted Scatter Plots")
         for var in selected_vars:
             st.plotly_chart(create_faceted_scatter(df_filtered, variable=var), use_container_width=True)
+            st.markdown(generate_chart_conclusion(corr_df, "scatter"))
 
     # Statistical Summary
     with tabs[4]:
@@ -264,6 +276,73 @@ def main():
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("Developed for comprehensive district-wise sales-environment analysis.")
+
+# -----------------------------
+# 12. Generate Chart Conclusions
+# -----------------------------
+def generate_chart_conclusion(corr_df, chart_type="heatmap", district=None, fiscal_year=None):
+    """Generate conclusion statements for different chart types."""
+    if corr_df.empty:
+        return "No correlation data available for the selected filters."
+    
+    data = corr_df.copy()
+    if district:
+        data = data[data['district'] == district]
+    if fiscal_year:
+        data = data[data['fiscal_year'] == fiscal_year]
+    
+    if chart_type == "heatmap":
+        # Overall correlation insights
+        strong_pos = data[(data['correlation'] >= 0.7) & (data['p_value'] < 0.05)]
+        strong_neg = data[(data['correlation'] <= -0.7) & (data['p_value'] < 0.05)]
+        moderate = data[(data['correlation'].abs() >= 0.3) & (data['correlation'].abs() < 0.7) & (data['p_value'] < 0.05)]
+        
+        conclusion = f"**Correlation Analysis Summary:**\n\n"
+        
+        if not strong_pos.empty:
+            top_pos = strong_pos.loc[strong_pos['correlation'].idxmax()]
+            conclusion += f"• **Strongest Positive Correlation:** {top_pos['variable']} (r={top_pos['correlation']:.3f}, p={top_pos['p_value']:.3f})\n"
+        
+        if not strong_neg.empty:
+            top_neg = strong_neg.loc[strong_neg['correlation'].idxmin()]
+            conclusion += f"• **Strongest Negative Correlation:** {top_neg['variable']} (r={top_neg['correlation']:.3f}, p={top_neg['p_value']:.3f})\n"
+        
+        if not moderate.empty:
+            conclusion += f"• **Moderate Correlations:** {len(moderate)} variables show moderate relationships\n"
+        
+        sig_count = len(data[data['p_value'] < 0.05])
+        total_count = len(data)
+        conclusion += f"• **Statistical Significance:** {sig_count}/{total_count} correlations are statistically significant (p<0.05)\n"
+        
+        if district:
+            conclusion += f"\n**District-specific Insights for {district}:**\n"
+            district_data = data[data['district'] == district]
+            if not district_data.empty:
+                top_var = district_data.loc[district_data['correlation'].abs().idxmax()]
+                conclusion += f"• Most influential factor: {top_var['variable']} (r={top_var['correlation']:.3f}, {top_var['strength']} correlation)"
+        
+        return conclusion
+    
+    elif chart_type == "scatter":
+        if district and fiscal_year:
+            return f"**Scatter Plot Interpretation for {district}, {fiscal_year}:**\n\n• Each point represents a monthly observation\n• Trend line shows the overall relationship direction\n• Color coding indicates seasonal patterns\n• R² value shows the strength of the linear relationship"
+        else:
+            return "**Scatter Plot Interpretation:**\n\n• Each point represents a monthly observation\n• Trend line shows the overall relationship direction\n• Color coding indicates seasonal patterns"
+    
+    elif chart_type == "box":
+        return "**Box Plot Interpretation:**\n\n• Box shows the interquartile range (IQR)\n• Median line indicates central tendency\n• Whiskers show data spread\n• Outliers indicate unusual sales patterns\n• Compare distributions across groups"
+    
+    elif chart_type == "time_series":
+        if district:
+            return f"**Time Series Analysis for {district}:**\n\n• Line shows monthly sales trends\n• Different colors represent fiscal years\n• Seasonal patterns and trends are visible\n• Peaks and troughs indicate business cycles"
+        else:
+            return "**Time Series Analysis:**\n\n• Line shows monthly sales trends\n• Different colors represent fiscal years\n• Seasonal patterns and trends are visible\n• Peaks and troughs indicate business cycles"
+    
+    elif chart_type == "bar":
+        return "**Bar Chart Interpretation:**\n\n• Bars show average correlation strength by district\n• Positive values indicate positive relationships\n• Negative values indicate inverse relationships\n• Longer bars indicate stronger correlations\n• Compare relative importance across districts"
+    
+    else:
+        return "**Chart Interpretation:**\n\n• Analyze patterns and relationships in the data\n• Look for trends, outliers, and significant correlations\n• Consider business implications of findings"
 
 if __name__ == "__main__":
     main() 
