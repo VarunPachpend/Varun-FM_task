@@ -81,7 +81,13 @@ def create_correlation_heatmap(corr_df, district=None, fiscal_year=None):
         data = data[data['district'] == district]
     if fiscal_year:
         data = data[data['fiscal_year'] == fiscal_year]
-    heatmap_data = data.pivot(index='variable', columns='fiscal_year' if district else 'district', values='correlation')
+    pivot_col = 'fiscal_year' if district else 'district'
+    # If duplicates exist, aggregate by mean
+    if data.duplicated(subset=['variable', pivot_col]).any():
+        dupes = data[data.duplicated(subset=['variable', pivot_col], keep=False)]
+        st.warning(f'Duplicate entries found for heatmap and aggregated by mean. Example rows: {dupes.head(3).to_dict(orient="records")}')
+        data = data.groupby(['variable', pivot_col], as_index=False)['correlation'].mean()
+    heatmap_data = data.pivot(index='variable', columns=pivot_col, values='correlation')
     fig = px.imshow(heatmap_data, text_auto=True, color_continuous_scale='RdBu', zmin=-1, zmax=1,
                     labels=dict(color='Pearson r'), aspect='auto')
     fig.update_layout(title=f"Correlation Heatmap {'for ' + district if district else ''}",
