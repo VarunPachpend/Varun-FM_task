@@ -32,6 +32,8 @@ def load_data():
         return None
     # Handle missing values
     df = df.dropna(subset=['district', 'fiscal_year', 'sales_volume'])
+    # Clean fiscal_year: extract digits and convert to int
+    df['fiscal_year'] = df['fiscal_year'].astype(str).str.extract(r'(\d+)')[0].astype(int)
     df.fillna(method='ffill', inplace=True)
     df.fillna(method='bfill', inplace=True)
     return df
